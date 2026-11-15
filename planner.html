@@ -429,6 +429,16 @@ option,optgroup{background:#131A35;color:#F7F7FF}
 .ad-inline{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.22);color:var(--ink)}
 .ad-inline .ad-lab{color:#FCD34D}
 .ad{border:1px solid rgba(255,255,255,.1)}
+.promo{display:flex;flex-direction:column;gap:3px;margin:0 0 12px;padding:12px 14px;border-radius:14px;border:1px solid rgba(167,139,250,.35);background:linear-gradient(120deg,rgba(167,139,250,.14),rgba(56,189,248,.08));cursor:pointer}
+.promo.slim{flex-direction:row;align-items:center;gap:10px;cursor:default;border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04);font-size:13.5px}
+.promo-cta{color:#C4B5FD;font-weight:600;font-size:13px;margin-top:2px}
+.ad-lab2{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.promo-native{border-color:rgba(255,255,255,.12)}
+.lockcard{align-items:flex-start;text-align:left;border:1px dashed rgba(167,139,250,.45);margin-bottom:12px}
+.plangrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.plancard{display:flex;flex-direction:column;gap:4px;align-items:flex-start;padding:14px;border-radius:14px;border:1px solid rgba(167,139,250,.45);background:rgba(167,139,250,.10);color:var(--ink);text-align:left;font-size:16px;cursor:pointer;transition:background .18s}
+.plancard:hover{background:rgba(167,139,250,.18)}.plancard:disabled{opacity:.6}
+.ntab.plans{width:100%;font-size:13px}.ntab.plans td{padding:6px 4px}.ntab.plans td:first-child{color:var(--muted)}
 </style>
 <script id="app-state" type="application/json">null</script>
 </head>
@@ -438,7 +448,7 @@ option,optgroup{background:#131A35;color:#F7F7FF}
 <script id="app-code">
 (function(){
 "use strict";
-adHtml=function(){return ''};adBar=function(){return ''};
+adBar=function(){return ''};adHtml=function(id){return freeSlot(id)};affNote=function(){return isPlus()?'':'<div class="affnote">Some retailer links are affiliate links: if you buy, we may earn a small commission at no extra cost to you.</div>'};
 var FONTS='<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Inter:wght@400;500;600&display=swap">';
 var LS_KEY='mp-draft-'+((window.MPB&&window.MPB.household&&window.MPB.household.id)||'local');
 var AISLES=['Produce','Meat & Seafood','Dairy & Eggs','Bakery','Pantry','Frozen','Household','Other'];
@@ -702,13 +712,16 @@ function applySec(n,obj){var conv=false;if(n==='plan'&&obj.plans===undefined){S.
  if(n==='stock'||n==='core'){if(!S.kitchens||!S.kitchens.length)S.kitchens=[{id:'home',name:'Home'}];if(!S.pantries)S.pantries={};if(!S.kitchens.some(function(k){return k.id===S.kitchen}))S.kitchen=S.kitchens[0].id;if(!S.pantries[S.kitchen])S.pantries[S.kitchen]=[];S.inventory=S.pantries[S.kitchen]}
  if(ui.modal&&ui.modal.type==='onboard'&&ui.modal.step===0&&(S.onboarded||(S.settings.people&&S.settings.people.length)))ui.modal=null}
 function startSync(d){SYNC.d=d;var meta=d.doc('hh/meta');
- meta.get().then(function(snap){if(snap.exists){subscribeAll();return}
+ function seedRecipes(done){var col=d.collection(REC_COL);col.get().then(function(q){var have={};(q.docs||[]).forEach(function(x){have[x.id]=1});var rs=S.recipes.filter(function(r){return !have[r.id]});var k=0;
+   (function batch(){if(k>=rs.length){meta.set({seeded:true,recipesDone:true,at:Date.now(),v:2}).then(done,done);return}var part=rs.slice(k,k+6);k+=6;
+    Promise.all(part.map(function(r){var js=JSON.stringify(r);return col.doc(r.id).set({r:r,i:S.recipes.indexOf(r)+1}).then(function(){SYNC.lastR[r.id]=js})})).then(batch,fail)})()},fail)}
+ meta.get().then(function(snap){if(snap.exists){var md=snap.data()||{};if(md.seeded&&md.recipesDone===false){seedRecipes(function(){});}subscribeAll();return}
   meta.acquire({holder:'t'+uid(),ttlMs:60000}).then(function(r){if(!r.acquired){setTimeout(function(){subscribeAll()},4000);return}
    meta.get().then(function(s2){if(s2.exists&&s2.data()&&s2.data().seeded){subscribeAll();return}
     syncPantry();var names=Object.keys(SECS),i=0;
-    (function next(){if(i<names.length){var n=names[i++];var js=secJSON(n);d.doc('hh/'+n).set({d:JSON.parse(js),at:Date.now()}).then(function(){SYNC.last[n]=js;next()},fail);return}
-     var rs=S.recipes.slice(),j=0;(function nr(){if(j<rs.length){var r=rs[j++];var js=JSON.stringify(r);d.collection(REC_COL).doc(r.id).set({r:r,i:j}).then(function(){SYNC.lastR[r.id]=js;setTimeout(nr,60)},fail);return}
-      SYNC.rReady=true;meta.set({seeded:true,at:Date.now(),v:1}).then(function(){dirty=false;toast('Your planner is now shared and syncs automatically');subscribeAll()},fail)})()})()})},fail)},fail)
+    Promise.all(names.map(function(n){var js=secJSON(n);return d.doc('hh/'+n).set({d:JSON.parse(js),at:Date.now()}).then(function(){SYNC.last[n]=js})})).then(function(){
+     return meta.set({seeded:true,recipesDone:false,at:Date.now(),v:2})}).then(function(){
+     seedRecipes(function(){SYNC.rReady=true;dirty=false;toast('Your planner is saved to your account');subscribeAll()})},fail)})},fail)},fail)
  function fail(e){SYNC.status='off';render()}}
 function subscribeAll(){var d=SYNC.d;SYNC.on=true;SYNC.status='ok';setTimeout(render,0);
  Object.keys(SECS).forEach(function(n){d.doc('hh/'+n).onSnapshot(function(snap){if(!snap.exists||snap.metadata.hasPendingWrites)return;var body=snap.data()||{};var js=JSON.stringify(body.d||{});if(js===SYNC.last[n])return;
@@ -742,7 +755,7 @@ function use(n){try{return (window.claude&&window.claude.use)?window.claude.use(
 use('artifact').then(function(a){artifactApi=a;render()},function(){});
 use('sample').then(function(s){sampleApi=s;if(s&&s.limits)s.limits().then(function(l){ui.imgOk=!!(l&&l.images);ui.imgMax=l&&l.images?l.images.maxCount:4;render()},function(){});render()},function(){});
 var dbApi=null,wantedSig=null;ui.prices=null;ui.priceNote='';
-use('db').then(function(d){dbApi=d;if(!d)return;
+use('db').then(function(d){dbApi=d;if(window.MPB&&window.MPB.justUpgraded)setTimeout(function(){toast('💎 Welcome to Plus — everything is unlocked')},600);if(!d)return;
  try{startSync(d)}catch(e){}
  var t=setTimeout(function(){if(!ui.prices){ui.priceNote='Prices can’t be reached right now.';render()}},10000);
  try{d.doc('prices/latest').onSnapshot(function(snap){if(!snap.metadata.fromCache)clearTimeout(t);ui.prices=snap.exists?snap.data():null;ui.priceNote='';render()},function(){clearTimeout(t);ui.priceNote='Prices unavailable.';render()})}catch(e){}
@@ -779,7 +792,7 @@ var todayKey=dkey(new Date());
 // ---------- helpers ----------
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function rec(id){for(var i=0;i<S.recipes.length;i++)if(S.recipes[i].id===id)return S.recipes[i];return null}
-function toast(msg){var t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove()},2800)}
+function toast(msg){if(ui.quietUntil&&Date.now()<ui.quietUntil)return;var t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove()},2800)}
 function inPantry(n){n=n.toLowerCase();return S.pantry.some(function(p){return p.toLowerCase()===n})}
 
 function buildList(){return withKitchen(listKitchen(),buildList0)}
@@ -1106,7 +1119,7 @@ function render(){
  var y=window.scrollY;
  var savepill=SYNC.on?(SYNC.status==='busy'||(dirty&&SYNC.status!=='ro')?'<button class="savepill ok"><span class="spin"></span> Syncing</button>':SYNC.status==='ro'?'<button class="savepill ok" title="You can view but not change this planner">View only</button>':SYNC.status==='err'?'<button class="savepill" data-a="save">Retry sync</button>':'<button class="savepill ok" title="Shared — changes sync automatically">✓ Synced</button>'):ui.saving?'<button class="savepill"><span class="spin"></span></button>':(dirty?'<button class="savepill" data-a="save">Save changes</button>':'<button class="savepill ok">Saved</button>');
  var tabs=tabBtn('plan','📅','Plan')+tabBtn('recipes','📖','Recipes')+tabBtn('list','🧾','List')+tabBtn('pantry','🧺','Pantry')+tabBtn('money','💰','Money')+tabBtn('diet','🥗','Diet');
- var html='<header class="top"><div class="top-in"><div class="brand">'+brandHtml()+'</div><nav class="tabs desk">'+tabs+'</nav>'+savepill+(window.MPB?'<button class="iconbtn" data-a="acct" title="Account &amp; invites" aria-label="Account" style="margin-left:6px">👤</button>':'')+'</div></header><nav class="tabs mob">'+tabs+'</nav><main>';
+ var html='<header class="top"><div class="top-in"><div class="brand">'+brandHtml()+'</div><nav class="tabs desk">'+tabs+'</nav>'+savepill+(window.MPB&&!isPlus()?'<button class="btn sm pri" data-a="plus" data-v="" style="margin-left:6px">💎 Plus</button>':'')+(window.MPB?'<button class="iconbtn" data-a="acct" title="Account &amp; invites" aria-label="Account" style="margin-left:6px">👤</button>':'')+'</div></header><nav class="tabs mob">'+tabs+'</nav><main>';
  if(ui.tab==='plan')html+=viewPlan();else if(ui.tab==='recipes')html+=viewRecipes();else if(ui.tab==='list')html+=viewList();else if(ui.tab==='pantry')html+=viewPantry();else if(ui.tab==='money')html+=viewMoney();else html+=viewDiet();
  html+='</main>'+(adClosed?'':adHtml('anchor'))+'<div id="modal">'+(ui.modal?viewModal():'')+'</div>';
  root.innerHTML=html;
@@ -1280,7 +1293,7 @@ function dayNutLine(k){var t=dayNut(k);if(!t.n)return '';var tg=targets(curProf(
  return '<div class="dnut'+(over?' over':'')+'" title="'+esc(curProf().name)+'’s own plate: their serve size, sides and added fats. Includes snacks.">'+t.kcal+' kcal · P '+t.p+' · F '+t.f+' · C '+t.c+(tg.keto?' net':'')+(t.miss?' <span class="meta">+'+t.miss+' not counted</span>':'')+'</div>'}
 function nbar(lbl,val,tgt,unit,mode){var pct=tgt?Math.round(val/tgt*100):0;var st=mode==='max'?(val<=tgt?'ok':'hi'):mode==='min'?(val>=tgt*0.9?'ok':'lo'):(pct>=85&&pct<=115?'ok':pct<85?'lo':'hi');
  return '<div class="nrow"><span class="nl">'+lbl+'</span><span class="nb"><span class="nf '+st+'" style="width:'+Math.min(100,pct)+'%"></span></span><span class="nv">'+Math.round(val)+' / '+(mode==='max'?'≤':'')+Math.round(tgt)+unit+'</span></div>'}
-function viewNutrition(){
+function viewNutrition(){if(!isPlus())return S.settings.view==='week'?lockCard('📊','Nutrition for each person','See calories, protein, fat and carbs for each person’s own plate, with daily targets and a MyFitnessPal copy.','nutrition'):'';
  if(S.settings.view!=='week')return '';var days=rangeDays().map(dkey).filter(function(k){return dayNut(k).n});if(!days.length)return '';
  var pf=curProf(),tg=targets(pf);var sum={kcal:0,p:0,f:0,sf:0,c:0,fib:0},overC=0,lowP=0;
  days.forEach(function(k){var t=dayNut(k);Object.keys(sum).forEach(function(x){sum[x]+=t[x]});if(tg.keto&&t.c>tg.c)overC++;if(t.p<tg.p*0.85)lowP++});
@@ -1463,7 +1476,7 @@ function pruneMoney(){var cut3=dkey(addDays(new Date(),-92)),cut13=addMonth(toda
  S.waste=(S.waste||[]).filter(function(w){return mKey(w.date)>=cut13})}
 function buysOf(pid){var out=[];(S.spend||[]).forEach(function(r){(r.items||[]).forEach(function(i){if(i.prod===pid)out.push({d:r.date,q:i.qty||1,a:+i.amt||0})});(r.buys||[]).forEach(function(b){if(b.p===pid)out.push({d:r.date,q:b.q||1,a:+b.a||0})})});return out.sort(function(a,b){return a.d<b.d?-1:1})}
 function usageOf(p){var b=buysOf(p.id);if(b.length<2)return {n:b.length};var first=pkey(b[0].d),last=pkey(b[b.length-1].d);var days=Math.max(1,(last-first)/86400000);var units=b.slice(0,-1).reduce(function(a,x){return a+x.q},0);var perMonth=units/days*30.4;var interval=days/(b.length-1);var spend=b.slice(0,-1).reduce(function(a,x){return a+x.a},0)/Math.max(days,1)*30.4;return {n:b.length,perMonth:Math.round(perMonth*10)/10,every:Math.round(interval),spend:Math.round(spend*100)/100,suggestMin:Math.max(1,Math.ceil(perMonth/4))}}
-function viewMoney(){var sub=ui.ms||'spend';var h='<div class="seg wrap" style="margin-bottom:10px">'+[['spend','🧾 Spending'],['budget','📊 Budget'],['usage','📈 Usage'],['bulk','🥩 Bulk & sales'],['review','📝 Review']].map(function(x){return '<button class="'+(sub===x[0]?'on':'')+'" data-a="ms" data-v="'+x[0]+'">'+x[1]+'</button>'}).join('')+'</div>';
+function viewMoney(){if(!isPlus())return lockCard('💰','Money','Snap receipts, track spending by category, set budgets, see how fast you use things, and plan bulk buys around the big sales.','money');var sub=ui.ms||'spend';var h='<div class="seg wrap" style="margin-bottom:10px">'+[['spend','🧾 Spending'],['budget','📊 Budget'],['usage','📈 Usage'],['bulk','🥩 Bulk & sales'],['review','📝 Review']].map(function(x){return '<button class="'+(sub===x[0]?'on':'')+'" data-a="ms" data-v="'+x[0]+'">'+x[1]+'</button>'}).join('')+'</div>';
  if(sub==='spend')return h+viewSpend();if(sub==='budget')return h+viewBudget();if(sub==='usage')return h+viewUsage();if(sub==='bulk')return h+viewBulk();return h+viewReview()}
 function monthNav(){var k=curMonth();return '<div class="bar"><button class="btn sm" data-a="mprev">‹</button><b style="min-width:140px;text-align:center">'+esc(monthLabel(k))+'</b><button class="btn sm" data-a="mnext">›</button></div>'}
 function viewSpend(){var k=curMonth();var ms=monthSpend(k);var h=monthNav();
@@ -1656,12 +1669,38 @@ function sendBox(need){var st=sendStore();var nm=STORES[st].name;
 
 // ---------- 👤 account, invites & household sharing (Base44) ----------
 function acctModal(){var B=window.MPB;var u=B.user,hh=B.household;var o='<div class="mhd"><h2>👤 Account</h2><button class="iconbtn" data-a="close">✕</button></div>';
- o+='<div class="card" style="gap:2px;margin-bottom:6px"><b>'+esc(u.full_name||u.email)+'</b><span class="meta">'+esc(u.email)+' · '+esc(hh.name||'')+' · '+(hh.plan==='plus'?'Plus plan':'Free plan')+'</span></div>';
+ o+='<div class="card" style="gap:2px;margin-bottom:6px"><b>'+esc(u.full_name||u.email)+'</b><span class="meta">'+esc(u.email)+' · '+esc(hh.name||'')+'</span></div>';
+ var pi=planInfo();o+='<div class="bar" style="margin:0 0 6px"><span class="meta">'+(pi.plan==='plus'?'💎 Plus':pi.trial?'🎁 Plus trial · '+pi.trialDaysLeft+' days left':'Free plan'+(pi.aiLimit?' · AI '+(pi.aiUsed||0)+'/'+pi.aiLimit+' this month':''))+'</span><span class="grow"></span><button class="btn sm '+(pi.plan==='plus'?'':'pri')+'" data-a="plus" data-v="">'+(pi.plan==='plus'?'Manage':'💎 Plus')+'</button></div>';
  o+='<div class="sec"><h3>🎁 Invite friends</h3></div><div class="hint">Share your link. Anyone who signs up with it shows here.</div><div class="bar" style="margin:8px 0 4px"><input class="search" readonly value="'+esc(B.inviteLink)+'" id="reflink" style="font-size:13px"><button class="btn sm pri" data-a="refcopy">Copy</button>'+(navigator.share?'<button class="btn sm" data-a="refshare">Share</button>':'')+'</div><div class="meta" style="margin-bottom:8px">Your code: <b>'+esc(u.ref_code||'')+'</b></div>';
  var R=ui.refs;o+=R==null?'<div class="hint">Loading your referrals…</div>':(R.length?'<div class="list">'+R.map(function(r){return '<div class="row"><div class="main"><div class="nm">'+esc(r.referred_first_name||'Someone')+'</div><div class="from">joined '+esc(r.joined||'')+'</div></div><span class="tagc">'+(r.plan==='plus'?'Plus':'Free')+'</span></div>'}).join('')+'</div>':'<div class="empty" style="padding:18px">No sign-ups yet.</div>');
  o+='<div class="sec"><h3>🏠 Household sharing</h3></div><div class="hint">Everyone here sees and edits the same planner, live.</div><div class="list" style="margin-top:6px">'+(hh.members||[]).map(function(e){return '<div class="row"><div class="main"><div class="nm">'+esc(e)+'</div></div>'+(e===hh.owner_email?'<span class="meta">owner</span>':'')+'</div>'}).join('')+'</div>';
  o+='<div class="bar" style="margin-top:8px"><input id="memail" class="search" type="email" placeholder="their@email.com" autocomplete="off"><button class="btn sm" data-a="maddm"'+(ui.adding?' disabled':'')+'>'+(ui.adding?'<span class="spin"></span> Adding…':'＋ Add')+'</button></div><div class="hint">They sign in with that email and land straight in this household.</div>';
  return o+'<div class="bar" style="margin-top:16px"><button class="btn ghost" data-a="logout">Sign out</button></div>'}
+
+// ---------- 💎 free & Plus plans ----------
+function planInfo(){return (window.MPB&&window.MPB.plan)||{plus:true,plan:'free'}}
+function isPlus(){return !!planInfo().plus}
+function upsell(reason){ui.modal={type:'plus',reason:reason||''};render()}
+window.MP_UPSELL=function(r){ui.quietUntil=Date.now()+2500;upsell(r)};
+var UPSELL_WHY={people:'Free households can plan for 2 people.',kitchen:'Free households have 1 kitchen.',share:'Sharing the planner with another adult is part of Plus.',money:'The Money tab is part of Plus.',nutrition:'Per-person nutrition and targets are part of Plus.',ai:'You’ve used this month’s 3 free AI requests (Plan smart, photo and receipt reading, estimates).'};
+function plusModal(m){var p=planInfo();var o='<div class="mhd"><h2>💎 Meal Planner Plus</h2><button class="iconbtn" data-a="close">✕</button></div>';
+ if(m.reason&&UPSELL_WHY[m.reason])o+='<div class="note soft" style="margin-bottom:10px">'+esc(UPSELL_WHY[m.reason])+'</div>';
+ if(p.plan==='plus'){o+='<div class="card" style="gap:4px"><b>✓ You’re on Plus'+(p.interval?' ('+(p.interval==='year'?'yearly':'monthly')+')':'')+'</b><span class="meta">Thanks for supporting the planner.</span></div>';
+  if(window.MPB.user.email.toLowerCase()===String(window.MPB.household.owner_email).toLowerCase())o+='<div class="bar" style="margin-top:12px"><button class="btn ghost" data-a="pluscancel"'+(m.busy?' disabled':'')+'>Cancel at the end of this period</button></div>';
+  return o}
+ if(p.trial)o+='<div class="note soft" style="margin-bottom:10px">🎁 Your free trial of Plus has <b>'+p.trialDaysLeft+' day'+(p.trialDaysLeft===1?'':'s')+'</b> left. Everything is unlocked until then.</div>';
+ var rows=[['Recipes, weekly plan, shopping list, pantry','✓','✓'],['People','2','Unlimited + part-time schedules'],['Kitchens / homes','1','Multiple'],['Share with your partner','—','✓'],['AI: Plan smart, photo & receipt reading','3 a month','Unlimited'],['Per-person nutrition & targets','—','✓'],['Money tab: receipts, budgets, bulk buys','—','✓'],['Ads','Yes','None']];
+ o+='<table class="ntab plans"><tr><th></th><th>Free</th><th>Plus</th></tr>'+rows.map(function(r){return '<tr><td>'+esc(r[0])+'</td><td>'+esc(r[1])+'</td><td><b>'+esc(r[2])+'</b></td></tr>'}).join('')+'</table>';
+ o+='<div class="plangrid"><button class="plancard" data-a="plusbuy" data-v="year"'+(m.busy?' disabled':'')+'><span class="tagc pos-chip">Best value</span><b>A$49 / year</b><span class="meta">≈ A$4.08 a month</span></button><button class="plancard" data-a="plusbuy" data-v="month"'+(m.busy?' disabled':'')+'><b>A$6.99 / month</b><span class="meta">Cancel any time</span></button></div>';
+ if(m.busy)o+='<div class="hint"><span class="spin"></span> Opening secure checkout…</div>';if(m.err)o+='<div class="hint" style="color:var(--err)">'+esc(m.err)+'</div>';
+ return o+'<div class="hint" style="margin-top:8px">Payments are handled securely by Stripe. One subscription covers everyone in your household.</div>'}
+function lockCard(icon,title,text,reason){return '<div class="card lockcard"><div style="font-size:28px">'+icon+'</div><h3 style="margin:4px 0">'+esc(title)+' <span class="tagc">Plus</span></h3><div class="meta">'+esc(text)+'</div><div class="bar" style="margin-top:10px"><button class="btn pri" data-a="plus" data-v="'+reason+'">See Plus</button></div></div>'}
+function freeSlot(id){if(isPlus())return '';
+ if(id==='top')return '<div class="promo" data-a="plus" data-v=""><span class="ad-lab2">Meal Planner Plus</span><b>✨ Go ad-free and plan for the whole family</b><span class="meta">Unlimited people &amp; kitchens · share with your partner · Plan smart · Money tab</span><span class="promo-cta">See Plus →</span></div>';
+ if(id==='native')return '<div class="card promo-native"><span class="ad-lab2">Partner</span><h3>🥡 Meal-prep containers &amp; muffin trays</h3><div class="meta">Glass containers, silicone moulds and lunchbox gear for batch cooking.</div><div class="tags">'+affA('kitchenwarehouse','https://www.kitchenwarehouse.com.au/search?q=meal+prep+containers','Kitchen Warehouse ↗','ad-cta sm')+'</div></div>';
+ if(id==='list')return '<div class="promo slim"><span class="ad-lab2">Partner</span><span>🛒 Shop this list at Woolworths, item by item</span><button class="btn sm" data-a="walk">▶ Start</button></div>';
+ if(id==='prep')return '<div class="promo slim"><span class="ad-lab2">Partner</span><span>🥡 Batch-cooking gear</span> '+affA('kitchenwarehouse','https://www.kitchenwarehouse.com.au/search?q=meal+prep','Kitchen Warehouse ↗','btn sm')+'</div>';
+ return ''}
 function viewCompare(items){
  var P=ui.prices;
  if(!P||!P.items){return '<div class="note soft">'+(ui.priceNote||(dbApi?'No prices loaded yet — they appear here after the weekly price update runs.':'Price comparison isn’t available in this view.'))+'</div>'}
@@ -1710,6 +1749,8 @@ function viewModal(){
   h=walkModal(m);
  }else if(m.type==='acct'){
   h=acctModal();
+ }else if(m.type==='plus'){
+  h=plusModal(m);
  }else if(m.type==='snap'){
   var it=buildList().filter(needItem);
   h='<div class="mhd"><h2>'+(sendStore()==='woolworths'?'Snap &amp; Shop':'Big-print list')+'</h2><button class="iconbtn" data-a="close">✕</button></div><div class="hint" style="margin-bottom:10px">'+(sendStore()==='woolworths'?'In the Woolworths app, open Snap &amp; Shop and photograph this list. It builds a shopping list for you to check and buy. If it misreads anything, use Copy list instead.':'Take this to '+esc(STORES[sendStore()].name)+' on your phone, or copy it to your notes.')+'</div>';
@@ -2493,8 +2534,11 @@ document.addEventListener('click',function(ev){
   case 'acct':ui.modal={type:'acct'};ui.refs=null;render();window.MPB.referrals().then(function(r){ui.refs=r||[];if(ui.modal&&ui.modal.type==='acct')render()},function(){ui.refs=[];render()});break;
   case 'refcopy':var rl=document.getElementById('reflink');try{navigator.clipboard.writeText(window.MPB.inviteLink).then(function(){toast('Link copied')},function(){if(rl){rl.select();toast('Selected — tap Copy')}})}catch(e){if(rl)rl.select()}break;
   case 'refshare':try{navigator.share({title:'Meal Planner Plus',text:'I plan our meals and shopping with this — have a look:',url:window.MPB.inviteLink})}catch(e){}break;
-  case 'maddm':var me2=document.getElementById('memail');var em=(me2?me2.value:'').trim().toLowerCase();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){toast('Enter an email address');break}ui.adding=true;render();window.MPB.addMember(em).then(function(){ui.adding=false;toast('Added '+em);render()},function(e){ui.adding=false;toast('Couldn’t add — '+(e&&e.message||'try again'));render()});break;
+  case 'maddm':if(!isPlus()){upsell('share');break}var me2=document.getElementById('memail');var em=(me2?me2.value:'').trim().toLowerCase();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){toast('Enter an email address');break}ui.adding=true;render();window.MPB.addMember(em).then(function(){ui.adding=false;toast('Added '+em);render()},function(e){ui.adding=false;toast('Couldn’t add — '+(e&&e.message||'try again'));render()});break;
   case 'logout':window.MPB.logout();break;
+  case 'plus':if(ev&&ev.preventDefault)ev.preventDefault();upsell(v||'');break;
+  case 'plusbuy':var pm=ui.modal;pm.busy=true;pm.err='';render();window.MPB.checkout(v).then(function(r){if(r&&r.error){pm.busy=false;pm.err=r.error;render()}},function(e){pm.busy=false;var d=e&&e.response&&e.response.data;pm.err=(d&&d.error)||'Couldn’t open checkout — try again';render()});break;
+  case 'pluscancel':var pc=ui.modal;if(!pc.sure){pc.sure=true;toast('Tap again to cancel — Plus stays on until the end of the period');break}pc.busy=true;render();window.MPB.cancelPlus().then(function(){pc.busy=false;toast('Cancelled — Plus stays on until the end of the period');ui.modal=null;render()},function(){pc.busy=false;toast('Couldn’t cancel — try again');render()});break;
   case 'smart':ui.modal={type:'smart',pantry:true,stockOnly:false,lo:S.settings.meals.indexOf('Lunch')>=0,reuse:true,makeover:true};render();break;
   case 'smarttog':ui.modal[v]=!ui.modal[v];render();break;
   case 'dosmart':smartPlan();break;
@@ -2539,7 +2583,7 @@ document.addEventListener('click',function(ev){
   case 'herosave':heroSave();break;
   case 'heroreset':delete S.settings.hero;delete S.settings.heroPos;ui.modal=null;toast('Original photo restored');change();break;
   case 'kitchens':ui.modal={type:'kitchens',list:JSON.parse(JSON.stringify(S.kitchens))};render();break;
-  case 'kadd':readK();ui.modal.list.push({id:'k'+uid().slice(0,6),name:'Kitchen '+(ui.modal.list.length+1)});render();break;
+  case 'kadd':readK();if(!isPlus()&&ui.modal.list.length>=1){upsell('kitchen');break}ui.modal.list.push({id:'k'+uid().slice(0,6),name:'Kitchen '+(ui.modal.list.length+1)});render();break;
   case 'kdel':readK();var kd=ui.modal.list[+v];var kn=(S.pantries[kd.id]||[]).length;if(kn&&!ui.modal.delOk){ui.modal.delOk=true;toast(kd.name+' has '+kn+' pantry items — tap ✕ again to remove it anyway');break}ui.modal.list.splice(+v,1);render();break;
   case 'ksave':readK();var kl=ui.modal.list;var keep={};kl.forEach(function(x){keep[x.id]=1;if(!S.pantries[x.id])S.pantries[x.id]=[]});syncPantry();Object.keys(S.pantries).forEach(function(id){if(!keep[id])delete S.pantries[id]});Object.keys(S.dayLoc).forEach(function(d){if(!keep[S.dayLoc[d]])delete S.dayLoc[d]});if(S.plans)Object.keys(S.plans).forEach(function(id){if(!keep[id])delete S.plans[id]});S.kitchens=kl;kl.forEach(function(x){if(S.plans&&!S.plans[x.id])S.plans[x.id]={}});if(!keep[S.kitchen])setKitchen(kl[0].id);ui.modal=null;toast('Kitchens saved');change();break;
   case 'where':var wk={};rangeDays().forEach(function(d){var k=dkey(d);if(multiK()&&dayKitchen(k)===(S.kitchens[1]||S.kitchens[0]).id)wk[k]=true});ui.modal={type:'where',k:(S.kitchens[1]||S.kitchens[0]).id,days:wk,rep:false};render();break;
@@ -2660,7 +2704,7 @@ document.addEventListener('click',function(ev){
   case 'tmode':readTargets();var tm=v.split('|');tgSetMode(ui.modal.people[+tm[0]],tm[1]);render();break;
   case 'tauto':readTargets();var ta2=v.split('|');var tx=ui.modal.people[+ta2[0]];var tmc=macroCalc(tx);if(tx.mode==='pct'){tx.pp=tmc.pct.p;tx.pc=tmc.pct.c;tx.pfat=tmc.pct.f}else{tx.p=tmc.g.p;tx.c=tmc.g.c;tx.f=tmc.g.f}tx.auto=ta2[1];render();break;
   case 'tpreset':readTargets();var tp=v.split('|');var tpx=ui.modal.people[+tp[0]],pr=MACRO_PRESETS[+tp[1]];tpx.mode='pct';tpx.pfat=pr[1];tpx.pp=pr[2];tpx.pc=pr[3];tpx.auto='f';render();break;
-  case 'tadd':readTargets();ui.modal.people.push({name:'Person '+(ui.modal.people.length+1),kcal:2000,p:110,fib:28,auto:'f',diet:ui.modal.pp?'none':undefined});render();break;
+  case 'tadd':readTargets();if(!isPlus()&&ui.modal.people.length>=2){upsell('people');break}ui.modal.people.push({name:'Person '+(ui.modal.people.length+1),kcal:2000,p:110,fib:28,auto:'f',diet:ui.modal.pp?'none':undefined});render();break;
   case 'tdel':readTargets();ui.modal.people.splice(Number(v),1);render();break;
   case 'tsched':readTargets();var tsv=v.split('|');var tsx=ui.modal.people[+tsv[0]];tsx.sched=tsx.sched||{};tsx.sched.t=tsv[1];render();break;
   case 'txadd':readTargets();var txp=ui.modal.people[+v];var xa=(document.getElementById('t-xa'+v)||{}).value,xb=(document.getElementById('t-xb'+v)||{}).value;if(!xa){toast('Pick a start date');break}if(xb&&xb<xa){var xt=xa;xa=xb;xb=xt}txp.sched=txp.sched||{};txp.sched.x=(txp.sched.x||[]).concat([{a:xa,b:xb||xa}]);render();break;

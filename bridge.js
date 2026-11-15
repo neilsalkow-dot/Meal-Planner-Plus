@@ -36,12 +36,13 @@ function colRef(path){var depth=path.split('/').length+1;return {path:path,doc:f
  get:function(){return ready.then(function(){return {docs:Object.keys(cache).filter(function(k){return k.indexOf(path+'/')===0&&k.split('/').length===depth}).map(function(k){return snap(k,cache[k].body)})}})}}}
 var db={doc:docRef,collection:colRef};
 var Core=B.base44.integrations.Core;
+function upload(file){return (Core.UploadPublicFile||Core.UploadFile).call(Core,{file:file})}
 function parseJSON(r){if(r&&typeof r==='object')return r;var t=String(r||'').replace(/```(?:json)?/g,'');var a=t.indexOf('{'),b=t.lastIndexOf('}');if(a<0||b<a)throw {code:'bad_json'};return JSON.parse(t.slice(a,b+1))}
 var sample={limits:function(){return Promise.resolve({images:{maxCount:4}})},
  json:function(prompt,o){o=o||{};var files=o.images||[];
-  return Promise.all(files.map(function(f){var file=f instanceof File?f:new File([f],'photo.jpg',{type:f.type||'image/jpeg'});return Core.UploadFile({file:file}).then(function(r){return r.file_url})}))
-   .then(function(urls){var q={prompt:prompt+'\n\nReply with one JSON object only, no other text.'};if(urls.length)q.file_urls=urls;return Core.InvokeLLM(q)})
+  return Promise.all(files.map(function(f){var file=f instanceof File?f:new File([f],'photo.jpg',{type:f.type||'image/jpeg'});return upload(file).then(function(r){return r.file_url})}))
+   .then(function(urls){var q={prompt:prompt+'\n\nReply with one JSON object only, no other text.'};if(urls.length)q.file_urls=urls;return B.base44.functions.invoke('askAi',q).then(function(r){return r&&r.data?r.data.result:null},function(e){var st=e&&e.response&&e.response.status;var d=e&&e.response&&e.response.data;if(st===402){try{window.MP_UPSELL&&window.MP_UPSELL('ai')}catch(x){}throw {code:'limit',message:'You\u2019ve used this month\u2019s free AI requests'}}throw {code:st===401?'auth':'failed',message:(d&&d.error)||String(e&&e.message||e)}})})
    .then(parseJSON).catch(function(e){throw (e&&e.code)?e:{code:'failed',message:String(e&&e.message||e)}})}};
-var assets={upload:function(blob){var file=blob instanceof File?blob:new File([blob],'photo.jpg',{type:blob.type||'image/jpeg'});return Core.UploadFile({file:file}).then(function(r){return {url:r.file_url}})}};
+var assets={upload:function(blob){var file=blob instanceof File?blob:new File([blob],'photo.jpg',{type:blob.type||'image/jpeg'});return upload(file).then(function(r){return {url:r.file_url}})}};
 window.claude={use:function(n){if(n==='db')return Promise.resolve(db);if(n==='sample')return Promise.resolve(sample);if(n==='assets')return Promise.resolve(assets);return Promise.resolve(null)}};
 })();
