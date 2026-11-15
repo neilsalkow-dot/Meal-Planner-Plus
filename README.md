@@ -1,2 +1,3 @@
-# Meal-Planner-Plus
-Meal planner
+# Meal Planner Plus
+
+Website for the Meal Planner: https://neilsalkow-dot.github.io/Meal-Planner-Plus/
